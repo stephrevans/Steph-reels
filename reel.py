@@ -68,22 +68,19 @@ def find_keep_ranges(path, duration, noise_db, min_silence, pad):
 
 
 def cut_silences(src, dst, keep, hdr):
-    parts, labels = [], []
-    for i, (a, b) in enumerate(keep):
-        parts.append(f"[0:v]trim={a:.3f}:{b:.3f},setpts=PTS-STARTPTS[v{i}];")
-        parts.append(f"[0:a]atrim={a:.3f}:{b:.3f},asetpts=PTS-STARTPTS[a{i}];")
-        labels.append(f"[v{i}][a{i}]")
-    graph = "".join(parts) + "".join(labels) + f"concat=n={len(keep)}:v=1:a=1[vc][a]"
-    # Instagram reels are 1080 wide; 4K just makes everything slower.
-    graph += ";[vc]scale=1080:-2" + ("[vs]" if hdr else ",format=yuv420p[v]")
+    # select/aselect stream frame by frame, so memory stays low even on 4K.
+    expr = "+".join(f"between(t,{a:.3f},{b:.3f})" for a, b in keep)
+    v = f"select='{expr}',setpts=N/FRAME_RATE/TB,scale=1080:-2"
     if hdr:  # iPhone HDR -> normal SDR so colors don't look washed out on IG
-        graph += (";[vs]zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,"
-                  "tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv,format=yuv420p[v]")
+        v += (",zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,"
+              "tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv")
+    v += ",format=yuv420p"
+    graph = f"[0:v]{v}[v];[0:a]aselect='{expr}',asetpts=N/SR/TB[a]"
     with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as f:
         f.write(graph)
     run(["ffmpeg", "-y", "-hide_banner", "-i", src, "-filter_complex_script", f.name,
          "-map", "[v]", "-map", "[a]", "-c:v", "libx264", "-preset", "fast", "-crf", "16",
-         "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", dst])
+         "-r", "30", "-c:a", "aac", "-b:a", "192k", dst])
     os.unlink(f.name)
 
 
@@ -203,13 +200,15 @@ def main():
     info = probe(args.input)
     os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
     work = tempfile.mkdtemp()
-    cut = os.path.join(work, "cut.mp4")
-
-    keep = find_keep_ranges(args.input, info["duration"], args.silence_db,
-                            args.min_silence, args.pad)
-    kept = sum(b - a for a, b in keep)
-    print(f"Keeping {len(keep)} pieces: {info['duration']:.1f}s -> {kept:.1f}s")
-    cut_silences(args.input, cut, keep, info["hdr"])
+    cut = os.path.splitext(args.output)[0] + ".cut.mp4"
+    if os.path.exists(cut):
+        print("Reusing", cut)
+    else:
+        keep = find_keep_ranges(args.input, info["duration"], args.silence_db,
+                                args.min_silence, args.pad)
+        kept = sum(b - a for a, b in keep)
+        print(f"Keeping {len(keep)} pieces: {info['duration']:.1f}s -> {kept:.1f}s")
+        cut_silences(args.input, cut, keep, info["hdr"])
 
     cinfo = probe(cut)
     w, h = cinfo["w"], cinfo["h"]
