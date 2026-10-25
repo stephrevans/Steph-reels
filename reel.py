@@ -73,10 +73,11 @@ def cut_silences(src, dst, keep, hdr):
         parts.append(f"[0:v]trim={a:.3f}:{b:.3f},setpts=PTS-STARTPTS[v{i}];")
         parts.append(f"[0:a]atrim={a:.3f}:{b:.3f},asetpts=PTS-STARTPTS[a{i}];")
         labels.append(f"[v{i}][a{i}]")
-    vout = "[vc]" if hdr else "[v]"
-    graph = "".join(parts) + "".join(labels) + f"concat=n={len(keep)}:v=1:a=1{vout}[a]"
+    graph = "".join(parts) + "".join(labels) + f"concat=n={len(keep)}:v=1:a=1[vc][a]"
+    # Instagram reels are 1080 wide; 4K just makes everything slower.
+    graph += ";[vc]scale=1080:-2" + ("[vs]" if hdr else ",format=yuv420p[v]")
     if hdr:  # iPhone HDR -> normal SDR so colors don't look washed out on IG
-        graph += (";[vc]zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,"
+        graph += (";[vs]zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,"
                   "tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv,format=yuv420p[v]")
     with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as f:
         f.write(graph)
@@ -184,6 +185,7 @@ def main():
     ap.add_argument("--headline", default="content tricks I've done for 6 years")
     ap.add_argument("--fonts", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts"))
     ap.add_argument("--caption-font", default="Inter ExtraBold")
+    ap.add_argument("--fallback-headline-font", default="Inter Display Black")
     ap.add_argument("--silence-db", type=float, default=-35)
     ap.add_argument("--min-silence", type=float, default=0.30)
     ap.add_argument("--pad", type=float, default=0.06)
@@ -192,9 +194,11 @@ def main():
 
     adv = [f for f in glob.glob(os.path.join(args.fonts, "*"))
            if "advercase" in f.lower() and f.lower().endswith((".otf", ".ttf"))]
-    if not adv:
-        sys.exit(f"Put the Advercase .otf/.ttf in {args.fonts}/ first.")
-    head_font = font_family(adv[0])
+    if adv:
+        head_font = font_family(adv[0])
+    else:
+        head_font = args.fallback_headline_font
+        print(f"No Advercase file in {args.fonts}/ - using {head_font} for the headline")
 
     info = probe(args.input)
     os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
@@ -213,6 +217,7 @@ def main():
     print(f"Head top ~{head_top:.0f}px, chin ~{chin:.0f}px (of {h})")
 
     words = transcribe(cut, args.model)
+    words = [(a, b, re.sub(r"[.,!?;:]+$", "", t)) for a, b, t in words]
     print(f"Transcribed {len(words)} words")
     with open(os.path.splitext(args.output)[0] + ".txt", "w") as f:
         f.write(" ".join(t for _, _, t in words) + "\n")
