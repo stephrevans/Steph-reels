@@ -18,7 +18,10 @@ Steph has made these calls. Follow them; don't push back on them.
 - **Captions** below the chin, one word at a time, white, clean readable sans
   (Inter SemiBold), no outline or bold, only a faint soft shadow for legibility.
 - Fix obvious transcription spellings in captions (e.g. "reals" -> "Reels").
-- Audio is boosted to Instagram loudness (-14 LUFS); phone audio is quiet raw.
+- Keep the original audio volume. Don't boost or normalize it (Steph found it too loud).
+- Send each finished reel as a private Artifact page with a <video controls>
+  player (a ~720p preview under 15 MB) so it plays with sound in the app;
+  chat file previews play muted. Attach the full-quality MP4 too, for posting.
 - Steph's phone album is called "Reels Potential" (Whisper hears "Real Potential").
 - Steph is not technical: talk plainly, no git/PR jargon. Just handle the
   saving/merging so the rules stay in place. Feedback comes in this chat as
