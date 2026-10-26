@@ -117,7 +117,11 @@ def face_lines(path, w, h, duration):
 def transcribe(path, model_size):
     from faster_whisper import WhisperModel
     model = WhisperModel(model_size, device="cpu", compute_type="int8")
-    segs, _ = model.transcribe(path, word_timestamps=True, vad_filter=False)
+    import numpy as np
+    pcm = subprocess.run(["ffmpeg", "-v", "error", "-i", path, "-ac", "1", "-ar", "16000",
+                          "-f", "s16le", "-"], check=True, capture_output=True).stdout
+    audio = np.frombuffer(pcm, np.int16).astype(np.float32) / 32768.0
+    segs, _ = model.transcribe(audio, word_timestamps=True, vad_filter=False)
     words = []
     for s in segs:
         for wd in s.words:
