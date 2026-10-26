@@ -253,6 +253,35 @@ def write_ass(path, w, h, duration, words, headline, head_font, cap_font,
         f.write("\n".join(lines) + "\n")
 
 
+ADVERCASE_URL = "https://indieground.net/product/indieground-advercasefont-demo.zip"
+
+
+def find_advercase(folder):
+    files = [f for f in glob.glob(os.path.join(folder, "*"))
+             if "advercase" in f.lower() and f.lower().endswith((".otf", ".ttf"))]
+    # Prefer the Regular weight (the plain IG Edits look).
+    return sorted(files, key=lambda f: ("regular" not in f.lower(), f))
+
+
+def fetch_advercase(folder):
+    """Download Advercase into fonts/ (it isn't kept in git)."""
+    import io
+    import urllib.request
+    import zipfile
+    try:
+        req = urllib.request.Request(ADVERCASE_URL, headers={"User-Agent": "Mozilla/5.0"})
+        data = urllib.request.urlopen(req, timeout=60).read()
+        with zipfile.ZipFile(io.BytesIO(data)) as z:
+            for name in z.namelist():
+                base = os.path.basename(name)
+                if base.lower().endswith(".otf") and not name.startswith("__MACOSX"):
+                    with open(os.path.join(folder, base), "wb") as f:
+                        f.write(z.read(name))
+        print("Downloaded Advercase into", folder)
+    except Exception as e:
+        print("Couldn't download Advercase:", e)
+
+
 def font_family(font_file):
     out = run(["fc-scan", "--format", "%{family[0]}", font_file]).stdout.strip()
     return out or os.path.splitext(os.path.basename(font_file))[0]
@@ -275,8 +304,10 @@ def main():
                          "(see <output>.indexed.txt)")
     args = ap.parse_args()
 
-    adv = [f for f in glob.glob(os.path.join(args.fonts, "*"))
-           if "advercase" in f.lower() and f.lower().endswith((".otf", ".ttf"))]
+    adv = find_advercase(args.fonts)
+    if not adv:
+        fetch_advercase(args.fonts)
+        adv = find_advercase(args.fonts)
     missing = ""
     if adv:
         head_font = font_family(adv[0])
