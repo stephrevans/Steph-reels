@@ -104,7 +104,7 @@ def load_audio(path):
     return np.frombuffer(pcm, np.int16).astype(np.float32) / 32768.0
 
 
-def speech_ranges(audio, words, duration, floor_db=None):
+def speech_ranges(audio, words, duration, floor_db=None, blocked=()):
     """Keep only spots that are both loud enough to be voice AND inside a
     transcribed word. Everything else (pauses, breaths, rustling) is cut."""
     import numpy as np
@@ -142,6 +142,8 @@ def speech_ranges(audio, words, duration, floor_db=None):
     in_word = np.zeros(n, bool)
     for a, b, _ in words:
         in_word[max(0, int((a - 0.04) * 100)):int((b + 0.08) * 100)] = True
+    for a, b in blocked:                    # flubs/restarts cut by the editor
+        in_word[max(0, int(a * 100)):int(b * 100)] = False
     keep = close(loud & in_word, 6)         # don't chop between words < 60 ms
     ranges, i = [], 0
     while i < n:
@@ -175,7 +177,11 @@ def remap(words, ranges):
 def transcribe(audio, model_size):
     from faster_whisper import WhisperModel
     model = WhisperModel(model_size, device="cpu", compute_type="int8")
-    segs, _ = model.transcribe(audio, word_timestamps=True, vad_filter=False)
+    # The prompt nudges Whisper to write down ums, stutters and restarts
+    # instead of tidying them away, so flubs show up in the transcript.
+    segs, _ = model.transcribe(
+        audio, word_timestamps=True, vad_filter=False, condition_on_previous_text=False,
+        initial_prompt="Umm, so, uh, I- I was like, um, the- the thing is, uh, you know.")
     words = []
     for s in segs:
         for wd in s.words:
@@ -262,6 +268,9 @@ def main():
     ap.add_argument("--floor-db", type=float, default=None,
                     help="voice loudness threshold; default is picked from the audio")
     ap.add_argument("--model", default="small.en")
+    ap.add_argument("--drop", default="",
+                    help="flubbed words to cut, as transcript index ranges like 85-86,243-246 "
+                         "(see <output>.indexed.txt)")
     args = ap.parse_args()
 
     adv = [f for f in glob.glob(os.path.join(args.fonts, "*"))
@@ -292,8 +301,29 @@ def main():
         json.dump(words, open(wjson, "w"))
     words = [(a, b, re.sub(r"[.,!?;:]+$", "", t)) for a, b, t in words]
     print(f"Transcribed {len(words)} words")
+    with open(base + ".indexed.txt", "w") as f:  # for picking --drop ranges
+        f.write(" ".join(f"{i}:{t}" for i, (_, _, t) in enumerate(words)) + "\n")
 
-    keep, floor = speech_ranges(audio, words, info["duration"], args.floor_db)
+    # Drop flubbed takes: remove those words and block their audio, from the
+    # end of the last kept word before them to the start of the next kept one.
+    drop = set()
+    for part in filter(None, args.drop.split(",")):
+        lo, _, hi = part.partition("-")
+        drop.update(range(int(lo), int(hi or lo) + 1))
+    blocked = []
+    for i in sorted(drop):
+        if i - 1 in drop:
+            continue
+        j = i
+        while j + 1 in drop:
+            j += 1
+        a = words[i - 1][1] + 0.02 if i > 0 else 0.0
+        b = words[j + 1][0] - 0.03 if j + 1 < len(words) else info["duration"]
+        blocked.append((a, b))
+        print("Cutting flub:", " ".join(t for _, _, t in words[i:j + 1]))
+    words = [w for i, w in enumerate(words) if i not in drop]
+
+    keep, floor = speech_ranges(audio, words, info["duration"], args.floor_db, blocked)
     kept = sum(b - a for a, b in keep)
     print(f"Voice threshold {floor:.1f} dB; keeping {len(keep)} pieces: "
           f"{info['duration']:.1f}s -> {kept:.1f}s")
