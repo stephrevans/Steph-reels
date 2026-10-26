@@ -239,8 +239,10 @@ def write_ass(path, w, h, duration, words, headline, head_font, cap_font,
         f"0,0,0,0,100,100,0,0,1,{max(3, cap_size // 16)},0,8,{margin},{margin},0,1",
         "", "[Events]",
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
-        f"Dialogue: 0,{ts(0)},{ts(duration)},Head,,0,0,0,,{{\\an2\\pos({w // 2},{head_y})}}{headline_text(headline, head_font, missing)}",
     ]
+    if headline:  # pass --headline "" to leave it off (e.g. to add it in Edits)
+        lines.append(f"Dialogue: 0,{ts(0)},{ts(duration)},Head,,0,0,0,,"
+                     f"{{\\an2\\pos({w // 2},{head_y})}}{headline_text(headline, head_font, missing)}")
     for i, (a, b, t) in enumerate(words):
         nxt = words[i + 1][0] if i + 1 < len(words) else b + 0.3
         end = min(max(b, a + 0.12), nxt) if nxt > a else b
