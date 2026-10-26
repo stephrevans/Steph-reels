@@ -18,6 +18,11 @@ Steph has made these calls. Follow them; don't push back on them.
 - **Captions** below the chin, one word at a time, white, clean readable sans
   (Inter SemiBold), no outline or bold, only a faint soft shadow for legibility.
 - Fix obvious transcription spellings in captions (e.g. "reals" -> "Reels").
+- Audio is boosted to Instagram loudness (-14 LUFS); phone audio is quiet raw.
+- Steph's phone album is called "Reels Potential" (Whisper hears "Real Potential").
+- Steph is not technical: talk plainly, no git/PR jargon. Just handle the
+  saving/merging so the rules stay in place. Feedback comes in this chat as
+  timestamps ("at 0:19 spell it ...").
 - Deliver a 1080x1920 MP4 sized for Instagram (~100 MB or less).
 
 Run:
