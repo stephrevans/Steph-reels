@@ -55,9 +55,7 @@ def cut_silences(src, dst, keep, hdr):
         v += (",zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,"
               "tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv")
     v += ",format=yuv420p"
-    graph = f"[0:v]{v}[v];[0:a]aselect='{expr}',asetpts=N/SR/TB,"
-    # Bring phone audio up to Instagram's usual loudness.
-    graph += "loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000[a]"
+    graph = f"[0:v]{v}[v];[0:a]aselect='{expr}',asetpts=N/SR/TB[a]"
     with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as f:
         f.write(graph)
     run(["ffmpeg", "-y", "-hide_banner", "-i", src, "-filter_complex_script", f.name,
