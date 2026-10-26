@@ -4,3 +4,5 @@ out/
 *.mov
 *.mp4
 __pycache__/
+fonts/*.otf
+fonts/*.ttf
