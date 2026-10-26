@@ -140,9 +140,23 @@ def esc(t):
     return t.replace("\\", "\\\\").replace("{", "(").replace("}", ")")
 
 
+def headline_text(text, font, missing):
+    """Escape the headline; draw characters the font lacks (e.g. the
+    apostrophe in the Advercase demo) in a similar serif instead."""
+    out = ""
+    for ch in text:
+        if ch in missing:
+            if ch == "'":
+                ch = "\u2019"
+            out += f"{{\\fnFreeSerif}}{ch}{{\\fn{font}}}"
+        else:
+            out += esc(ch)
+    return out
+
+
 def write_ass(path, w, h, duration, words, headline, head_font, cap_font,
-              head_top, chin):
-    head_size = int(w * 0.085)
+              head_top, chin, head_bold=False, missing=""):
+    head_size = int(w * 0.092)
     cap_size = int(w * 0.075)
     margin = int(w * 0.07)
     # Headline: bottom edge sits a little above the top of the head.
@@ -157,12 +171,12 @@ def write_ass(path, w, h, duration, words, headline, head_font, cap_font,
         "BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, "
         "BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
         f"Style: Head,{head_font},{head_size},&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,"
-        f"0,0,0,0,100,100,0,0,1,{max(2, head_size // 22)},{max(2, head_size // 18)},2,{margin},{margin},0,1",
+        f"{-1 if head_bold else 0},0,0,0,100,100,0,0,1,{max(2, head_size // 22)},{max(2, head_size // 18)},2,{margin},{margin},0,1",
         f"Style: Cap,{cap_font},{cap_size},&H00FFFFFF,&H00FFFFFF,&H00000000,&H64000000,"
         f"-1,0,0,0,100,100,0,0,1,{max(3, cap_size // 14)},{max(2, cap_size // 20)},8,{margin},{margin},0,1",
         "", "[Events]",
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
-        f"Dialogue: 0,{ts(0)},{ts(duration)},Head,,0,0,0,,{{\\an2\\pos({w // 2},{head_y})}}{esc(headline)}",
+        f"Dialogue: 0,{ts(0)},{ts(duration)},Head,,0,0,0,,{{\\an2\\pos({w // 2},{head_y})}}{headline_text(headline, head_font, missing)}",
     ]
     for i, (a, b, t) in enumerate(words):
         nxt = words[i + 1][0] if i + 1 < len(words) else b + 0.3
@@ -186,6 +200,7 @@ def main():
     ap.add_argument("--headline", default="content tricks I've done for 6 years")
     ap.add_argument("--fonts", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts"))
     ap.add_argument("--caption-font", default="Inter ExtraBold")
+    ap.add_argument("--headline-bold", action="store_true")
     ap.add_argument("--fallback-headline-font", default="Inter Display Black")
     ap.add_argument("--silence-db", type=float, default=-35)
     ap.add_argument("--min-silence", type=float, default=0.30)
@@ -195,8 +210,14 @@ def main():
 
     adv = [f for f in glob.glob(os.path.join(args.fonts, "*"))
            if "advercase" in f.lower() and f.lower().endswith((".otf", ".ttf"))]
+    missing = ""
     if adv:
         head_font = font_family(adv[0])
+        from fontTools.ttLib import TTFont
+        cmap = TTFont(adv[0]).getBestCmap()
+        missing = "".join(sorted({c for c in args.headline if c != " " and ord(c) not in cmap}))
+        if missing:
+            print(f"{head_font} has no {missing!r}; drawing those in a serif")
     else:
         head_font = args.fallback_headline_font
         print(f"No Advercase file in {args.fonts}/ - using {head_font} for the headline")
@@ -227,7 +248,7 @@ def main():
 
     ass = os.path.join(work, "subs.ass")
     write_ass(ass, w, h, cinfo["duration"], words, args.headline, head_font,
-              args.caption_font, head_top, chin)
+              args.caption_font, head_top, chin, args.headline_bold, missing)
     run(["ffmpeg", "-y", "-hide_banner", "-i", cut,
          "-vf", f"ass={ass}:fontsdir={args.fonts}",
          "-c:v", "libx264", "-preset", "slow", "-crf", "18", "-pix_fmt", "yuv420p",
